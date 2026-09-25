@@ -1,0 +1,99 @@
+on:
+  workflow_dispatch:
+
+jobs:
+  compute-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - run: git fetch --tags --force
+      - uses: ./.github/actions/doxxer_install
+      - id: version
+        run: |
+          VERSION=$(doxxer --config doxxer.web.toml next patch)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Computed version: $VERSION"
+
+  deploy:
+    needs: compute-version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    concurrency: web-vercel-deploy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/pnpm_install
+      - uses: denoland/setup-deno@v2
+      - name: Check Vercel deployment credentials
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          : "${VERCEL_TOKEN:?Missing VERCEL_TOKEN repository secret}"
+          : "${VERCEL_ORG_ID:?Missing VERCEL_ORG_ID repository secret}"
+          : "${VERCEL_PROJECT_ID:?Missing VERCEL_PROJECT_ID repository secret}"
+      - run: pnpm -F ui build
+      - run: npm install -g vercel@42.3.0
+      - name: Pull Vercel project settings
+        run: vercel pull --yes --environment=production --cwd apps/web --token="$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      - name: Build web for Vercel
+        run: vercel build --prod --cwd apps/web --token="$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          SENTRY_BUILD_SOURCEMAPS: "1"
+          VITE_APP_URL: https://mentari.dev
+          VITE_API_URL: https://api.anarlog.so
+          VITE_APP_VERSION: ${{ needs.compute-version.outputs.version }}
+      - name: Upload web source maps to Sentry
+        run: |
+          : "${SENTRY_AUTH_TOKEN:?Missing SENTRY_AUTH_TOKEN repository secret}"
+          : "${SENTRY_ORG:?Missing SENTRY_ORG repository variable}"
+          : "${SENTRY_PROJECT:?Missing SENTRY_PROJECT repository variable}"
+
+          pnpm -F @anlg/web exec sentry-cli sourcemaps inject .vercel/output/static
+          pnpm -F @anlg/web exec sentry-cli sourcemaps upload \
+            --org "$SENTRY_ORG" \
+            --project "$SENTRY_PROJECT" \
+            --release "$SENTRY_RELEASE" \
+            .vercel/output/static
+          find apps/web/.vercel/output -type f -name '*.map' -delete
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
+          SENTRY_RELEASE: mentari-web@${{ needs.compute-version.outputs.version }}
+      - name: Deploy web to Vercel
+        run: |
+          vercel deploy \
+            --prebuilt \
+            --prod \
+            --cwd apps/web \
+            --token="$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+  tag:
+    needs: [compute-version, deploy]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mathieudutour/github-tag-action@v6.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          custom_tag: web_v${{ needs.compute-version.outputs.version }}
+          tag_prefix: ""

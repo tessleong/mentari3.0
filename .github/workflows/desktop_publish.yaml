@@ -1,0 +1,180 @@
+name: Publish Mentari macOS Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Stable semantic version produced by the dry run"
+        required: true
+        type: string
+      candidate_sha:
+        description: "Exact 40-character source main commit"
+        required: true
+        type: string
+      dry_run_id:
+        description: "Successful Mentari macOS DMG Dry Run workflow run ID"
+        required: true
+        type: string
+
+concurrency:
+  group: mentari-macos-stable-publish
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: write
+
+env:
+  RELEASE_REPOSITORY: evitxchi/mentari-releases
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - id: validate
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          DRY_RUN_ID: ${{ inputs.dry_run_id }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Invalid stable version"; exit 1; }
+          [[ "$CANDIDATE_SHA" =~ ^[0-9a-fA-F]{40}$ ]] || { echo "::error::Candidate must be a full SHA"; exit 1; }
+          [[ "$DRY_RUN_ID" =~ ^[0-9]+$ ]] || { echo "::error::Dry-run ID must be numeric"; exit 1; }
+          [[ "${{ github.ref }}" == "refs/heads/main" ]] || { echo "::error::Dispatch from main"; exit 1; }
+
+          checked_out_sha=$(git rev-parse HEAD)
+          main_sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq '.sha')
+          candidate_sha=$(git rev-parse "$CANDIDATE_SHA")
+          if [[ "$candidate_sha" != "$checked_out_sha" || "$candidate_sha" != "$main_sha" ]]; then
+            echo "::error::Candidate is no longer the current main commit"
+            exit 1
+          fi
+          [[ -f "packages/changelog/content/$VERSION.md" ]] || { echo "::error::Missing changelog"; exit 1; }
+          if git rev-parse "desktop_v$VERSION" >/dev/null 2>&1; then
+            echo "::error::Source tag desktop_v$VERSION already exists"
+            exit 1
+          fi
+
+          run=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$DRY_RUN_ID")
+          run_sha=$(jq -r '.head_sha' <<< "$run")
+          conclusion=$(jq -r '.conclusion' <<< "$run")
+          workflow_path=$(jq -r '.path' <<< "$run")
+          run_attempt=$(jq -r '.run_attempt' <<< "$run")
+          if [[ "$run_sha" != "$candidate_sha" || "$conclusion" != "success" ]]; then
+            echo "::error::Dry run must be successful and match the candidate"
+            exit 1
+          fi
+          if [[ "$workflow_path" != ".github/workflows/desktop_cd.yaml" || "$run_attempt" != "1" ]]; then
+            echo "::error::Publication requires a first-attempt desktop_cd.yaml dry run"
+            exit 1
+          fi
+          echo "short_sha=${candidate_sha:0:12}" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: mentari-desktop-${{ inputs.version }}-${{ steps.validate.outputs.short_sha }}
+          path: release
+          run-id: ${{ inputs.dry_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify provenance and artifacts
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          VERSION: ${{ inputs.version }}
+        working-directory: release
+        run: |
+          set -euo pipefail
+          test "$(jq -r '.candidate_sha' provenance.json)" = "$CANDIDATE_SHA"
+          test "$(jq -r '.version' provenance.json)" = "$VERSION"
+          sha256sum --check SHA256SUMS.txt
+      - name: Build updater manifest and release notes
+        env:
+          RELEASE_REPOSITORY: ${{ env.RELEASE_REPOSITORY }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          tag="desktop_v$VERSION"
+          base_url="https://github.com/$RELEASE_REPOSITORY/releases/download/$tag"
+          arm_signature=$(cat "release/Mentari-$VERSION-macos-aarch64.app.tar.gz.sig")
+          intel_signature=$(cat "release/Mentari-$VERSION-macos-x86_64.app.tar.gz.sig")
+          notes=$(awk 'BEGIN { frontmatter = 0 } NR == 1 && $0 == "---" { frontmatter = 1; next } frontmatter && $0 == "---" { frontmatter = 0; next } !frontmatter { print }' "packages/changelog/content/$VERSION.md")
+          published_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          jq -n \
+            --arg arm_signature "$arm_signature" \
+            --arg arm_url "$base_url/Mentari-$VERSION-macos-aarch64.app.tar.gz" \
+            --arg intel_signature "$intel_signature" \
+            --arg intel_url "$base_url/Mentari-$VERSION-macos-x86_64.app.tar.gz" \
+            --arg notes "$notes" \
+            --arg published_at "$published_at" \
+            --arg version "$VERSION" \
+            '{version: $version, notes: $notes, pub_date: $published_at, platforms: {
+              "darwin-aarch64": {signature: $arm_signature, url: $arm_url},
+              "darwin-x86_64": {signature: $intel_signature, url: $intel_url}
+            }}' > release/latest.json
+          printf '%s\n' "$notes" > release/RELEASE_NOTES.md
+      - name: Verify public release repository
+        env:
+          GH_TOKEN: ${{ secrets.MENTARI_RELEASES_TOKEN }}
+          RELEASE_REPOSITORY: ${{ env.RELEASE_REPOSITORY }}
+        run: |
+          set -euo pipefail
+          [[ -n "$GH_TOKEN" ]] || { echo "::error::Missing MENTARI_RELEASES_TOKEN"; exit 1; }
+          visibility=$(gh api "repos/$RELEASE_REPOSITORY" --jq '.visibility')
+          [[ "$visibility" == "public" ]] || { echo "::error::Release repository must be public"; exit 1; }
+      - name: Create draft public release
+        env:
+          GH_TOKEN: ${{ secrets.MENTARI_RELEASES_TOKEN }}
+          RELEASE_REPOSITORY: ${{ env.RELEASE_REPOSITORY }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          tag="desktop_v$VERSION"
+          gh release create "$tag" \
+            --repo "$RELEASE_REPOSITORY" \
+            --target main \
+            --title "Mentari $VERSION" \
+            --notes-file release/RELEASE_NOTES.md \
+            --draft \
+            release/Mentari-$VERSION-macos-aarch64.dmg \
+            release/Mentari-$VERSION-macos-x86_64.dmg \
+            release/Mentari-$VERSION-macos-aarch64.app.tar.gz \
+            release/Mentari-$VERSION-macos-aarch64.app.tar.gz.sig \
+            release/Mentari-$VERSION-macos-x86_64.app.tar.gz \
+            release/Mentari-$VERSION-macos-x86_64.app.tar.gz.sig \
+            release/latest.json \
+            release/SHA256SUMS.txt \
+            release/provenance.json
+      - name: Create immutable source tag
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          tag_object=$(gh api \
+            --method POST \
+            "repos/$GITHUB_REPOSITORY/git/tags" \
+            -f tag="desktop_v$VERSION" \
+            -f message="Mentari desktop $VERSION" \
+            -f object="$CANDIDATE_SHA" \
+            -f type=commit \
+            --jq '.sha')
+          gh api \
+            --method POST \
+            "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f ref="refs/tags/desktop_v$VERSION" \
+            -f sha="$tag_object"
+      - name: Publish public release
+        env:
+          GH_TOKEN: ${{ secrets.MENTARI_RELEASES_TOKEN }}
+          RELEASE_REPOSITORY: ${{ env.RELEASE_REPOSITORY }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          gh release edit "desktop_v$VERSION" --repo "$RELEASE_REPOSITORY" --draft=false --latest

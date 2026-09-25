@@ -1,0 +1,60 @@
+{
+  "name": "clean_two_speaker",
+  "sampleRate": 16000,
+  "durationSeconds": 24.482,
+  "speakerCount": 2,
+  "speakers": [
+    "clinician",
+    "patient"
+  ],
+  "segments": [
+    {
+      "speaker": "clinician",
+      "start": 0.0,
+      "end": 1.501,
+      "text": "So what brings you in today?"
+    },
+    {
+      "speaker": "patient",
+      "start": 1.851,
+      "end": 4.232,
+      "text": "I've been getting short of breath at night."
+    },
+    {
+      "speaker": "clinician",
+      "start": 4.582,
+      "end": 6.274,
+      "text": "How long has that been going on?"
+    },
+    {
+      "speaker": "patient",
+      "start": 6.624,
+      "end": 9.783,
+      "text": "About three weeks now, maybe a little longer."
+    },
+    {
+      "speaker": "clinician",
+      "start": 10.133,
+      "end": 13.228,
+      "text": "Does it happen when you're lying flat, or also sitting up?"
+    },
+    {
+      "speaker": "patient",
+      "start": 13.578,
+      "end": 17.468,
+      "text": "Mostly when I'm lying flat, especially after I've eaten."
+    },
+    {
+      "speaker": "clinician",
+      "start": 17.818,
+      "end": 20.554,
+      "text": "Have you noticed any swelling in your legs or ankles?"
+    },
+    {
+      "speaker": "patient",
+      "start": 20.904,
+      "end": 24.482,
+      "text": "Yeah, actually, my ankles have been a bit puffy."
+    }
+  ]
+}

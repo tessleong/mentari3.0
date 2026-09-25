@@ -1,0 +1,22 @@
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - run: >-
+          node --test
+          .agents/skills/qa-critical-ux/scripts/launch-native-dev-qa.test.mjs
+          scripts/app-store-connect-submit.test.mjs
+          scripts/desktop-release-provenance.test.mjs
+          scripts/publish-anarlog-skill.test.mjs
+          scripts/repack-linux-appimage.test.mjs
+          scripts/verify-linux-audio-qa-run.test.mjs
+          scripts/verify-linux-audio-qa-evidence.test.mjs
+          scripts/update-apt-repository.test.mjs
+          scripts/update-aur-pkgbuild.test.mjs

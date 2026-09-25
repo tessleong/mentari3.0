@@ -1,0 +1,167 @@
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import type { ReactNode } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  billing: {
+    isPro: true,
+    isUpgradingToPro: false,
+    upgradeToPro: vi.fn(),
+  },
+}));
+
+vi.mock("@lingui/react/macro", () => ({
+  Trans: ({ children }: { children?: ReactNode }) => <>{children}</>,
+  useLingui: () => ({
+    t: (
+      input: TemplateStringsArray | { message?: string } | string,
+      ...values: unknown[]
+    ) => {
+      if (typeof input === "string") return input;
+      if (Array.isArray(input)) {
+        return (input as readonly string[]).reduce(
+          (message: string, part: string, index: number) =>
+            `${message}${part}${index < values.length ? String(values[index]) : ""}`,
+          "",
+        );
+      }
+      return (input as { message?: string }).message ?? "";
+    },
+  }),
+}));
+
+vi.mock("~/settings/queries", () => ({
+  useSetSettingValue: () => vi.fn(),
+}));
+
+vi.mock("~/auth/billing-context", () => ({
+  useBillingAccess: () => mocks.billing,
+}));
+
+vi.mock("~/shared/config", () => ({
+  useConfigValue: () => [],
+}));
+
+import { DictionarySettings, SettingsDictionary } from "./index";
+
+describe("DictionarySettings", () => {
+  beforeEach(() => {
+    mocks.billing.isPro = true;
+    mocks.billing.isUpgradingToPro = false;
+    mocks.billing.upgradeToPro.mockClear();
+  });
+
+  afterEach(cleanup);
+
+  it("offers an upgrade instead of editing on the free plan", () => {
+    mocks.billing.isPro = false;
+
+    render(<SettingsDictionary />);
+
+    expect(screen.queryByRole("textbox")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Upgrade to Pro" }));
+
+    expect(mocks.billing.upgradeToPro).toHaveBeenCalledOnce();
+  });
+
+  it("shows an empty state and disabled add control", () => {
+    render(<DictionarySettings terms={[]} onSave={vi.fn()} />);
+
+    const input = screen.getByRole("textbox");
+    const addButton = screen.getByRole("button", {
+      name: "Add",
+    }) as HTMLButtonElement;
+    expect(input).toBeTruthy();
+    expect(input.closest("[data-slot='input-group']")?.className).toContain(
+      "border-border",
+    );
+    expect(addButton.disabled).toBe(true);
+    expect(addButton.className).toContain("bg-black");
+    expect(screen.getByText("Add")).toBeTruthy();
+    expect(screen.getByText("Your dictionary is empty")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Tip: Add teammate names, acronyms, company jargon, and product terms.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText(
+        "Add names, jargon, and product terms to improve transcription.",
+      ),
+    ).toBeNull();
+    expect(screen.queryByText("FastConformer")).toBeNull();
+  });
+
+  it("adds entered terms and keeps them normalized", async () => {
+    const onSave = vi.fn();
+    render(<DictionarySettings terms={["Mentari"]} onSave={onSave} />);
+
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: " FastConformer, Parakeet TDT " },
+    });
+    const addButton = screen.getByRole("button", {
+      name: "Add",
+    }) as HTMLButtonElement;
+    await waitFor(() => expect(addButton.disabled).toBe(false));
+    fireEvent.click(addButton);
+
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith(
+        JSON.stringify(["Mentari", "FastConformer", "Parakeet TDT"]),
+      ),
+    );
+  });
+
+  it("removes saved terms", () => {
+    const onSave = vi.fn();
+    render(
+      <DictionarySettings
+        terms={["Mentari", "Parakeet TDT"]}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove Mentari" }));
+
+    expect(onSave).toHaveBeenCalledWith(JSON.stringify(["Parakeet TDT"]));
+  });
+
+  it("does not enable adding duplicate terms", async () => {
+    const onSave = vi.fn();
+    render(<DictionarySettings terms={["Mentari"]} onSave={onSave} />);
+
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "mentari" },
+    });
+
+    const addButton = screen.getByRole("button", {
+      name: "Add",
+    }) as HTMLButtonElement;
+    await waitFor(() => expect(addButton.disabled).toBe(true));
+    fireEvent.click(addButton);
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("filters saved terms while typing", async () => {
+    render(
+      <DictionarySettings
+        terms={["Mentari", "FastConformer", "Parakeet TDT"]}
+        onSave={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "fast" },
+    });
+
+    await waitFor(() => expect(screen.getByText("FastConformer")).toBeTruthy());
+    expect(screen.queryByText("Mentari")).toBeNull();
+    expect(screen.queryByText("Parakeet TDT")).toBeNull();
+  });
+});

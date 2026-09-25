@@ -1,0 +1,85 @@
+import { memo } from "react";
+
+import { ClassicMainBody } from "./body";
+import { resolveMainSurfaceChrome } from "./main-surface-chrome";
+import { WelcomeDashboard } from "./welcome";
+import { WindowsTitleBar } from "./windows-title-bar";
+
+import { AgentPanelHost } from "~/agents/agent-panel";
+import { AgentRuntime } from "~/agents/agent-runtime";
+import { ScribeRuntime } from "~/agents/scribe";
+import { useShell } from "~/contexts/shell";
+import { usesWindowsStyleTitleBar } from "~/shared/hooks/useWindowControlsGutter";
+import { MainShellBodyFrame, MainShellScaffold } from "~/shared/main";
+import { ToastNotifications } from "~/sidebar/toast";
+import {
+  hasCustomSidebarTab,
+  hasLeftSurfaceCustomSidebarTab,
+} from "~/sidebar/use-custom-sidebar";
+import { useTabs } from "~/store/zustand/tabs";
+
+export function ClassicMainShellFrame() {
+  const { leftsidebar } = useShell();
+  const currentTab = useTabs((state) => state.currentTab);
+
+  const isOnboarding = currentTab?.type === "onboarding";
+  const isChangelog = currentTab?.type === "changelog";
+  const showSyncStatus =
+    currentTab?.type === "empty" || currentTab?.type === "sessions";
+  const hasCustomSidebar = hasCustomSidebarTab(currentTab);
+  const hasLeftSurfaceCustomSidebar =
+    hasLeftSurfaceCustomSidebarTab(currentTab);
+  const showSidebarTimelineChrome = !hasCustomSidebar && !isOnboarding;
+  const showSidebarTimeline = showSidebarTimelineChrome && leftsidebar.expanded;
+  const mainSurfaceChrome = resolveMainSurfaceChrome({
+    hasLeftSurfaceCustomSidebar,
+    isChangelog,
+    leftSidebarExpanded: leftsidebar.expanded,
+    showSidebarTimeline,
+    showSidebarTimelineChrome,
+  });
+
+  const shell = (
+    <MainShellScaffold
+      edgeToEdge={isOnboarding || currentTab?.type === "empty"}
+      mainSurfaceChrome={
+        isOnboarding || currentTab?.type === "empty"
+          ? undefined
+          : mainSurfaceChrome
+      }
+    >
+      {currentTab?.type === "empty" ? (
+        <WelcomeDashboard />
+      ) : (
+        <ClassicMainBodyHost showSyncStatus={showSyncStatus} />
+      )}
+      <ToastNotifications />
+      <ScribeRuntime />
+      <AgentPanelHost />
+      <AgentRuntime />
+    </MainShellScaffold>
+  );
+
+  if (!usesWindowsStyleTitleBar()) {
+    return shell;
+  }
+
+  return (
+    <div className="bg-background flex h-full min-h-0 flex-col">
+      <WindowsTitleBar />
+      <div className="min-h-0 flex-1">{shell}</div>
+    </div>
+  );
+}
+
+const ClassicMainBodyHost = memo(function ClassicMainBodyHost({
+  showSyncStatus,
+}: {
+  showSyncStatus: boolean;
+}) {
+  return (
+    <MainShellBodyFrame>
+      <ClassicMainBody showSyncStatus={showSyncStatus} />
+    </MainShellBodyFrame>
+  );
+});

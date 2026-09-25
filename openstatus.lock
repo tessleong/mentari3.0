@@ -1,0 +1,72 @@
+"11026":
+  ID: 11026
+  Monitor:
+    active: true
+    assertions:
+    - compare: eq
+      kind: statusCode
+      target: 200
+    frequency: 1m
+    kind: http
+    name: Mentari API
+    openTelemetry: {}
+    regions:
+    - iad
+    - arn
+    - sin
+    - syd
+    - gru
+    - jnb
+    request:
+      method: GET
+      url: https://api.anarlog.so/health
+    retry: 3
+    timeout: 45000
+"11027":
+  ID: 11027
+  Monitor:
+    active: true
+    assertions:
+    - compare: eq
+      kind: statusCode
+      target: 200
+    frequency: 1m
+    kind: http
+    name: Mentari Web
+    openTelemetry: {}
+    regions:
+    - iad
+    - arn
+    - sin
+    - syd
+    - gru
+    - jnb
+    request:
+      method: GET
+      url: https://anarlog.so
+    retry: 3
+    timeout: 45000
+"11028":
+  ID: 11028
+  Monitor:
+    active: true
+    assertions:
+    - compare: eq
+      kind: statusCode
+      target: 200
+    frequency: 1m
+    kind: http
+    name: Mentari Docs
+    openTelemetry: {}
+    regions:
+    - iad
+    - arn
+    - sin
+    - syd
+    - gru
+    - jnb
+    request:
+      method: GET
+      url: https://docs.anarlog.so
+    retry: 3
+    timeout: 45000

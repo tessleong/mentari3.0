@@ -1,0 +1,35 @@
+{"run_id":"1788158823-558316000","line":129,"new":{"module_name":"template_app__types__tests","snapshot_name":"macro_participants_with_role","metadata":{"source":"crates/template-app/src/types.rs","assertion_line":129,"expression":"askama :: Template ::\nrender(&\nTestParticipants\n{\n    participants:\n    vec![Participant\n    {\n        name: \"Dr. Chau\".to_string(), job_title: Some(\"MD\".to_string()), role:\n        Some(\"clinician\".to_string()),\n    }, Participant\n    {\n        name: \"Me\".to_string(), job_title: None, role:\n        Some(\"patient\".to_string())\n    },],\n}).unwrap()"},"snapshot":"\n\n- Dr. Chau (MD) [clinician]\n\n- Me [patient]"},"old":{"module_name":"template_app__types__tests","metadata":{},"snapshot":"PLACEHOLDER"}}
+{"run_id":"1788158864-395277000","line":224,"new":{"module_name":"template_app__types__tests","snapshot_name":"macro_participants_list_with_role","metadata":{"source":"crates/template-app/src/types.rs","assertion_line":224,"expression":"askama :: Template ::\nrender(&\nTestParticipantsList\n{\n    participants:\n    vec![Participant\n    {\n        name: \"Dr. Chau\".to_string(), job_title: Some(\"MD\".to_string()), role:\n        Some(\"clinician\".to_string()),\n    }, Participant\n    {\n        name: \"Me\".to_string(), job_title: None, role:\n        Some(\"patient\".to_string())\n    },],\n}).unwrap()"},"snapshot":"\nParticipants:\n- Dr. Chau (MD) [clinician]\n  - Me [patient]"},"old":{"module_name":"template_app__types__tests","metadata":{},"snapshot":"PLACEHOLDER"}}
+{"run_id":"1788158973-234800000","line":104,"new":null,"old":null}
+{"run_id":"1788158973-234800000","line":121,"new":null,"old":null}
+{"run_id":"1788158973-234800000","line":175,"new":null,"old":null}
+{"run_id":"1788158973-234800000","line":129,"new":null,"old":null}
+{"run_id":"1788158973-234800000","line":191,"new":null,"old":null}
+{"run_id":"1788158973-234800000","line":208,"new":null,"old":null}
+{"run_id":"1788158973-234800000","line":281,"new":null,"old":null}
+{"run_id":"1788158973-234800000","line":224,"new":null,"old":null}
+{"run_id":"1788158973-234800000","line":158,"new":null,"old":null}
+{"run_id":"1788158973-234800000","line":253,"new":null,"old":null}
+{"run_id":"1788158973-234800000","line":72,"new":null,"old":null}
+{"run_id":"1788201933-705360000","line":104,"new":null,"old":null}
+{"run_id":"1788201933-705360000","line":121,"new":null,"old":null}
+{"run_id":"1788201933-705360000","line":224,"new":null,"old":null}
+{"run_id":"1788201933-705360000","line":129,"new":null,"old":null}
+{"run_id":"1788201933-705360000","line":191,"new":null,"old":null}
+{"run_id":"1788201933-705360000","line":158,"new":null,"old":null}
+{"run_id":"1788201933-705360000","line":281,"new":null,"old":null}
+{"run_id":"1788201933-705360000","line":253,"new":null,"old":null}
+{"run_id":"1788201933-705360000","line":72,"new":null,"old":null}
+{"run_id":"1788201933-705360000","line":208,"new":null,"old":null}
+{"run_id":"1788201933-705360000","line":175,"new":null,"old":null}
+{"run_id":"1788208524-929634000","line":121,"new":null,"old":null}
+{"run_id":"1788208524-929634000","line":253,"new":null,"old":null}
+{"run_id":"1788208524-929634000","line":281,"new":null,"old":null}
+{"run_id":"1788208524-929634000","line":224,"new":null,"old":null}
+{"run_id":"1788208524-929634000","line":208,"new":null,"old":null}
+{"run_id":"1788208524-929634000","line":129,"new":null,"old":null}
+{"run_id":"1788208524-929634000","line":158,"new":null,"old":null}
+{"run_id":"1788208524-929634000","line":104,"new":null,"old":null}
+{"run_id":"1788208524-929634000","line":191,"new":null,"old":null}
+{"run_id":"1788208524-929634000","line":72,"new":null,"old":null}
+{"run_id":"1788208524-929634000","line":175,"new":null,"old":null}

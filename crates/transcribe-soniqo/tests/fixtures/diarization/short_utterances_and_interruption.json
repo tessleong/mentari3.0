@@ -1,0 +1,66 @@
+{
+  "name": "short_utterances_and_interruption",
+  "sampleRate": 16000,
+  "durationSeconds": 29.118,
+  "speakerCount": 2,
+  "speakers": [
+    "clinician",
+    "patient"
+  ],
+  "segments": [
+    {
+      "speaker": "clinician",
+      "start": 0.0,
+      "end": 4.08,
+      "text": "Let's go over your medications. Are you still taking the lisinopril?"
+    },
+    {
+      "speaker": "patient",
+      "start": 4.429,
+      "end": 4.872,
+      "text": "Yeah."
+    },
+    {
+      "speaker": "clinician",
+      "start": 5.222,
+      "end": 6.861,
+      "text": "Once a day, in the morning?"
+    },
+    {
+      "speaker": "patient",
+      "start": 7.211,
+      "end": 7.747,
+      "text": "Right."
+    },
+    {
+      "speaker": "clinician",
+      "start": 8.097,
+      "end": 12.052,
+      "text": "Any side effects, dizziness, cough, anything like that?"
+    },
+    {
+      "speaker": "patient",
+      "start": 12.402,
+      "end": 17.744,
+      "text": "No, not really. Well, actually, sometimes I get a little"
+    },
+    {
+      "speaker": "clinician",
+      "start": 17.694,
+      "end": 20.257,
+      "text": "A cough, or more like a tickle in your throat?"
+    },
+    {
+      "speaker": "patient",
+      "start": 20.807,
+      "end": 24.361,
+      "text": "Exactly, a tickle. Yeah, that's it."
+    },
+    {
+      "speaker": "clinician",
+      "start": 24.911,
+      "end": 29.118,
+      "text": "Okay, that's a known side effect. We can switch you to something else."
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "name": "three_speaker",
+  "sampleRate": 16000,
+  "durationSeconds": 37.877,
+  "speakerCount": 3,
+  "speakers": [
+    "clinician",
+    "family",
+    "patient"
+  ],
+  "segments": [
+    {
+      "speaker": "clinician",
+      "start": 0.0,
+      "end": 3.115,
+      "text": "Good afternoon. And you must be here with your daughter today?"
+    },
+    {
+      "speaker": "patient",
+      "start": 3.465,
+      "end": 8.204,
+      "text": "Yes, this is my daughter, she's been helping me keep track of things."
+    },
+    {
+      "speaker": "family",
+      "start": 8.553,
+      "end": 13.17,
+      "text": "Hi, yeah, I just wanted to sit in since she mentioned the dizziness again."
+    },
+    {
+      "speaker": "clinician",
+      "start": 13.52,
+      "end": 16.79,
+      "text": "Of course, glad you're here. When did the dizziness start?"
+    },
+    {
+      "speaker": "patient",
+      "start": 17.14,
+      "end": 19.719,
+      "text": "Maybe two weeks ago, on and off."
+    },
+    {
+      "speaker": "family",
+      "start": 20.069,
+      "end": 22.998,
+      "text": "It's been worse in the mornings, from what I've seen."
+    },
+    {
+      "speaker": "clinician",
+      "start": 23.348,
+      "end": 26.779,
+      "text": "Does it feel like the room is spinning, or more like lightheadedness?"
+    },
+    {
+      "speaker": "patient",
+      "start": 27.129,
+      "end": 30.056,
+      "text": "More lightheaded, like I might fall over."
+    },
+    {
+      "speaker": "family",
+      "start": 30.406,
+      "end": 33.169,
+      "text": "She did almost fall in the kitchen last Tuesday."
+    },
+    {
+      "speaker": "clinician",
+      "start": 33.519,
+      "end": 37.877,
+      "text": "Okay, that's important. Let's check your blood pressure sitting and standing."
+    }
+  ]
+}

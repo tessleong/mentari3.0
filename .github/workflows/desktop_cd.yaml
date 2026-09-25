@@ -1,0 +1,250 @@
+name: Mentari macOS DMG Dry Run
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "Release channel"
+        required: true
+        type: choice
+        options: [stable]
+      version:
+        description: "Explicit stable semantic version"
+        required: true
+        type: string
+      candidate_sha:
+        description: "Optional immutable main commit; defaults to current main"
+        required: false
+        type: string
+        default: ""
+
+concurrency:
+  group: mentari-macos-stable-dry-run
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  NODE_OPTIONS: "--max-old-space-size=4096"
+  TAURI_CONF_PATH: ./src-tauri/tauri.conf.stable.json
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    outputs:
+      candidate_sha: ${{ steps.validate.outputs.candidate_sha }}
+      short_sha: ${{ steps.validate.outputs.short_sha }}
+      version: ${{ steps.validate.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.candidate_sha || github.sha }}
+          fetch-depth: 0
+          fetch-tags: true
+          lfs: true
+          persist-credentials: false
+      - id: validate
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          CHANNEL: ${{ inputs.channel }}
+          EXECUTION_REF: ${{ github.ref }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MENTARI_API_URL: ${{ vars.MENTARI_API_URL }}
+          MENTARI_APP_URL: ${{ vars.MENTARI_APP_URL }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          [[ "$CHANNEL" == "stable" ]] || { echo "::error::Only stable is supported"; exit 1; }
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Invalid stable version"; exit 1; }
+          [[ "$EXECUTION_REF" == "refs/heads/main" ]] || { echo "::error::Dispatch from main"; exit 1; }
+          [[ "$MENTARI_APP_URL" =~ ^https:// ]] || { echo "::error::MENTARI_APP_URL must be an HTTPS repository variable"; exit 1; }
+          [[ "$MENTARI_API_URL" =~ ^https:// ]] || { echo "::error::MENTARI_API_URL must be an HTTPS repository variable"; exit 1; }
+
+          checked_out_sha=$(git rev-parse HEAD)
+          main_sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq '.sha')
+          candidate_sha=$(git rev-parse "${CANDIDATE_SHA:-$checked_out_sha}")
+          if [[ "$candidate_sha" != "$checked_out_sha" || "$candidate_sha" != "$main_sha" ]]; then
+            echo "::error::Candidate must equal the current main commit"
+            exit 1
+          fi
+          [[ -f "packages/changelog/content/$VERSION.md" ]] || { echo "::error::Missing changelog"; exit 1; }
+          if git rev-parse "desktop_v$VERSION" >/dev/null 2>&1; then
+            echo "::error::Tag desktop_v$VERSION already exists"
+            exit 1
+          fi
+
+          echo "candidate_sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${candidate_sha:0:12}" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+  build-macos:
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: aarch64
+            runner: macos-15
+            target: aarch64-apple-darwin
+          - arch: x86_64
+            runner: macos-15-intel
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ needs.validate.outputs.candidate_sha }}
+          fetch-depth: 0
+          fetch-tags: true
+          lfs: true
+          submodules: recursive
+          persist-credentials: false
+      - name: Set application version
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: ./scripts/version.sh "./apps/desktop/src-tauri/tauri.conf.json" "$VERSION"
+      - uses: ./.github/actions/macos_tcc
+      - uses: ./.github/actions/install_desktop_deps
+        with:
+          target: macos
+      - uses: ./.github/actions/rust_install
+        with:
+          platform: macos
+      - run: echo "SDKROOT=$(xcrun --sdk macosx --show-sdk-path)" >> "$GITHUB_ENV"
+      - uses: ./.github/actions/pnpm_install
+      - run: pnpm -F ui build
+      - name: Prepare bundled binaries
+        env:
+          TAURI_ENV_TARGET_TRIPLE: ${{ matrix.target }}
+        run: |
+          cargo xtask prepare-binaries
+          ./scripts/sidecar.sh "./apps/desktop/${{ env.TAURI_CONF_PATH }}" "binaries/char-chrome-native-host"
+          ./scripts/sidecar.sh "./apps/desktop/${{ env.TAURI_CONF_PATH }}" "binaries/check-permissions"
+          ./scripts/sidecar.sh "./apps/desktop/${{ env.TAURI_CONF_PATH }}" "resources/cli/anarlog-cli"
+      - uses: ./.github/actions/apple_cert
+        id: apple-cert
+        with:
+          apple-certificate: ${{ secrets.APPLE_CERTIFICATE }}
+          apple-certificate-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          keychain-password: ${{ secrets.KEYCHAIN_PASSWORD }}
+      - name: Sign embedded CloudSync library
+        env:
+          CERT_ID: ${{ steps.apple-cert.outputs.cert-id }}
+          CLOUDSYNC_ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          dylib="crates/cloudsync/vendor/cloudsync/macos/$CLOUDSYNC_ARCH/cloudsync.dylib"
+          codesign --force --sign "$CERT_ID" --timestamp --options runtime "$dylib"
+          codesign --verify --strict --verbose=2 "$dylib"
+      - name: Build signed application and DMG
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ steps.apple-cert.outputs.cert-id }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APP_VERSION: ${{ needs.validate.outputs.version }}
+          CI: false
+          POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          VITE_API_URL: ${{ vars.MENTARI_API_URL }}
+          VITE_APP_URL: ${{ vars.MENTARI_APP_URL }}
+          VITE_APP_VERSION: ${{ needs.validate.outputs.version }}
+          VITE_POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+        run: |
+          args=(--target "${{ matrix.target }}" --config "${{ env.TAURI_CONF_PATH }}" --verbose)
+          if [[ "${{ matrix.target }}" == "x86_64-apple-darwin" ]]; then
+            args+=(--config ./src-tauri/tauri.conf.macos-intel.json)
+          fi
+          pnpm -F desktop tauri build "${args[@]}"
+      - name: Verify updater bundle signature
+        env:
+          TARGET: ${{ matrix.target }}
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          set -euo pipefail
+          bundle_dir="apps/desktop/src-tauri/target/$TARGET/release/bundle/macos"
+          app=$(find "$bundle_dir" -maxdepth 1 -name '*.app' -type d -print -quit)
+          updater=$(find "$bundle_dir" -maxdepth 1 -name '*.app.tar.gz' -type f -print -quit)
+          [[ -n "$app" && -f "$updater" && -f "$updater.sig" ]]
+          app_version=$(plutil -extract CFBundleShortVersionString raw -o - "$app/Contents/Info.plist")
+          [[ "$app_version" == "$VERSION" ]]
+          cargo run --locked -p updater-core --bin verify-updater-signature -- \
+            "$updater" "$updater.sig" apps/desktop/src-tauri/tauri.conf.json
+      - id: find-dmg
+        name: Find DMG
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          dmg=$(find "apps/desktop/src-tauri/target/$TARGET/release/bundle/dmg" -name '*.dmg' -type f -print -quit)
+          [[ -n "$dmg" ]]
+          echo "path=$dmg" >> "$GITHUB_OUTPUT"
+      - uses: ./.github/actions/macos_notarize_dmg
+        with:
+          dmg-path: ${{ steps.find-dmg.outputs.path }}
+          signing-identity: ${{ steps.apple-cert.outputs.cert-id }}
+          apple-id: ${{ secrets.APPLE_ID }}
+          apple-password: ${{ secrets.APPLE_PASSWORD }}
+          apple-team-id: ${{ secrets.APPLE_TEAM_ID }}
+      - name: Stage release artifacts
+        env:
+          ARCH: ${{ matrix.arch }}
+          TARGET: ${{ matrix.target }}
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          set -euo pipefail
+          output="$RUNNER_TEMP/mentari-release"
+          mkdir -p "$output"
+          dmg=$(find "apps/desktop/src-tauri/target/$TARGET/release/bundle/dmg" -name '*.dmg' -type f -print -quit)
+          updater=$(find "apps/desktop/src-tauri/target/$TARGET/release/bundle/macos" -name '*.app.tar.gz' -type f -print -quit)
+          cp "$dmg" "$output/Mentari-$VERSION-macos-$ARCH.dmg"
+          cp "$updater" "$output/Mentari-$VERSION-macos-$ARCH.app.tar.gz"
+          cp "$updater.sig" "$output/Mentari-$VERSION-macos-$ARCH.app.tar.gz.sig"
+          shasum -a 256 "$output"/* > "$output/SHA256SUMS-$ARCH.txt"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mentari-macos-${{ matrix.arch }}-${{ needs.validate.outputs.version }}-${{ needs.validate.outputs.short_sha }}
+          path: ${{ runner.temp }}/mentari-release/*
+          if-no-files-found: error
+          retention-days: 14
+
+  provenance:
+    needs: [validate, build-macos]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: mentari-macos-*-${{ needs.validate.outputs.version }}-${{ needs.validate.outputs.short_sha }}
+          path: release
+          merge-multiple: true
+      - name: Verify artifacts and write provenance
+        env:
+          CANDIDATE_SHA: ${{ needs.validate.outputs.candidate_sha }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          set -euo pipefail
+          test "$(find release -name '*.dmg' -type f | wc -l | tr -d ' ')" = 2
+          test "$(find release -name '*.app.tar.gz' -type f | wc -l | tr -d ' ')" = 2
+          test "$(find release -name '*.app.tar.gz.sig' -type f | wc -l | tr -d ' ')" = 2
+          find release -maxdepth 1 -type f ! -name 'SHA256SUMS-*' -print0 | sort -z | xargs -0 sha256sum \
+            | sed 's#  release/#  #' > release/SHA256SUMS.txt
+          jq -n --arg candidate_sha "$CANDIDATE_SHA" --arg source_repository "$SOURCE_REPOSITORY" \
+            --arg version "$VERSION" --arg workflow_run_id "${{ github.run_id }}" \
+            '{version: $version, candidate_sha: $candidate_sha, source_repository: $source_repository, workflow_run_id: $workflow_run_id}' \
+            > release/provenance.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mentari-desktop-${{ needs.validate.outputs.version }}-${{ needs.validate.outputs.short_sha }}
+          path: release/*
+          if-no-files-found: error
+          retention-days: 14

@@ -1,0 +1,34 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  appendPreferredNamesGuidance,
+  formatPreferredNamesGuidance,
+} from "./preferred-names";
+
+describe("preferred names guidance", () => {
+  it("formats dictionary terms as exact-spelling instructions", () => {
+    expect(formatPreferredNamesGuidance(["Mentari", "Char", "mentari"])).toBe(
+      `# Preferred Names
+
+Use these names and terms exactly when they appear, even if the transcript or notes spell them differently:
+- Mentari
+- Char`,
+    );
+  });
+
+  it("omits empty dictionary lists", () => {
+    expect(formatPreferredNamesGuidance([])).toBe("");
+    expect(appendPreferredNamesGuidance("Base prompt", [])).toBe("Base prompt");
+  });
+
+  it("appends preferred names after the rendered prompt", () => {
+    expect(appendPreferredNamesGuidance("Base prompt", ["Mentari"])).toBe(
+      `Base prompt
+
+# Preferred Names
+
+Use these names and terms exactly when they appear, even if the transcript or notes spell them differently:
+- Mentari`,
+    );
+  });
+});
