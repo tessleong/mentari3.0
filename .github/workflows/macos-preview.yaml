@@ -1,0 +1,57 @@
+name: Mentari Mac Preview
+
+on:
+  push:
+    branches: [fix/macos-sonoma-preview]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 180
+    env:
+      CARGO_BUILD_JOBS: 3
+      CARGO_PROFILE_RELEASE_DEBUG: 0
+      CARGO_PROFILE_RELEASE_LTO: "false"
+      CARGO_INCREMENTAL: 0
+      NODE_OPTIONS: --max-old-space-size=4096
+      POSTHOG_API_KEY: ""
+      APP_VERSION: 0.1.0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/install_desktop_deps
+        with:
+          target: macos
+      - uses: ./.github/actions/rust_install
+        with:
+          platform: macos
+      - run: echo "SDKROOT=$(xcrun --sdk macosx --show-sdk-path)" >> "$GITHUB_ENV"
+      - uses: ./.github/actions/pnpm_install
+      - run: pnpm -F @anlg/ui build
+      - name: Build local preview
+        run: |
+          pnpm -F desktop tauri build --ci --bundles app --no-sign \
+            --target aarch64-apple-darwin \
+            --config '{"version":"0.1.0","bundle":{"createUpdaterArtifacts":false}}'
+      - name: Package preview
+        run: |
+          set -euo pipefail
+          app="apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Mentari Dev.app"
+          [[ -d "$app" ]]
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$app/Contents/Info.plist")" == "14.2" ]]
+          codesign --force --deep --sign - "$app"
+          codesign --verify --deep --strict "$app"
+          ditto -c -k --sequesterRsrc --keepParent "$app" Mentari-Mac-Preview.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Mentari-Mac-Preview
+          path: Mentari-Mac-Preview.zip
+          if-no-files-found: error
+          retention-days: 7

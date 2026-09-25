@@ -88,7 +88,7 @@
       "resources/notification-icons": "notification-icons"
     },
     "macOS": {
-      "minimumSystemVersion": "15.0",
+      "minimumSystemVersion": "14.2",
       "frameworks": [
         "../../../crates/cloudsync/vendor/cloudsync/macos/aarch64/cloudsync.dylib"
       ],

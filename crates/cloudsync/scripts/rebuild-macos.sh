@@ -2,6 +2,8 @@
 
 set -euo pipefail
 
+export MACOSX_DEPLOYMENT_TARGET=14.2
+
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 crate_dir=$(cd "$script_dir/.." && pwd)
 source_dir=$(mktemp -d "${TMPDIR:-/tmp}/anarlog-sqlite-sync.XXXXXX")
