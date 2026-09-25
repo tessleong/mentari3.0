@@ -24,6 +24,8 @@ jobs:
       NODE_OPTIONS: --max-old-space-size=4096
       POSTHOG_API_KEY: ""
       APP_VERSION: 0.1.0
+      VITE_API_URL: http://localhost:3001
+      VITE_APP_URL: http://localhost:3000
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/install_desktop_deps
