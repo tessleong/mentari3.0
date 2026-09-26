@@ -37,6 +37,10 @@ impl ManagedState {
 
 const PLUGIN_NAME: &str = "analytics";
 
+fn configured_posthog_key(value: Option<&str>) -> Option<&str> {
+    value.filter(|key| key.starts_with("phc_") && key.len() > 4)
+}
+
 fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
     tauri_specta::Builder::<R>::new()
         .plugin_name(PLUGIN_NAME)
@@ -58,19 +62,7 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
     tauri::plugin::Builder::new(PLUGIN_NAME)
         .invoke_handler(specta_builder.invoke_handler())
         .setup(|app, _api| {
-            let posthog_key = {
-                #[cfg(not(debug_assertions))]
-                {
-                    let v = env!("POSTHOG_API_KEY");
-                    assert!(v.starts_with("phc_"));
-                    Some(v)
-                }
-
-                #[cfg(debug_assertions)]
-                {
-                    option_env!("POSTHOG_API_KEY")
-                }
-            };
+            let posthog_key = configured_posthog_key(option_env!("POSTHOG_API_KEY"));
 
             let client = {
                 let mut builder = anlg_analytics::AnalyticsClientBuilder::default();
@@ -90,6 +82,14 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn posthog_key_is_optional_for_local_builds() {
+        for key in [None, Some(""), Some("invalid"), Some("phc_")] {
+            assert_eq!(configured_posthog_key(key), None);
+        }
+        assert_eq!(configured_posthog_key(Some("phc_test")), Some("phc_test"));
+    }
 
     #[test]
     fn export_types() {
